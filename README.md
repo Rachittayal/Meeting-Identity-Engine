@@ -209,3 +209,26 @@ In one line: *while the current prototype uses metadata and transcript-based heu
 - **Interpreters and proxies are out of scope.** Someone speaking on another person's behalf would look structurally identical to genuine first-person narrative; nothing in the given data distinguishes this.
 - **Confidence scores are directionally meaningful, not statistically calibrated.** Without a labeled dataset of real interviews to calibrate against, the log-odds deltas are reasoned, hand-tuned weights — internally consistent for ranking and abstention decisions, but not rigorously calibrated real-world probabilities. The architecture supports future calibration (every decision is logged with enough detail for offline threshold tuning) but the prototype ships with defaults, not fitted parameters.
 - **The default heuristic classifier is regex-based**, not LLM-backed, in its current default configuration — genuinely novel phrasing outside its pattern list will be missed (though safely: it falls through to `NONE` and contributes no evidence, rather than misclassifying).
+
+## 🚀 Getting Started (for Evaluators)
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/Rachittayal/Meeting-Identity-Engine.git
+   cd <project name>
+   ```
+2. **Install dependencies**
+   ```bash
+   uv sync
+   ```
+3. **Start the API server**
+   ```bash
+   uv run uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+   ```
+4. **Run the pre‑built evaluation script**
+   ```bash
+   uv run python scripts/evaluate_meeting_flow.py
+   ```
+
+
+   
