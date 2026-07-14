@@ -25,17 +25,19 @@ from app.models.schemas import ExternalMetadata
 
 
 class TurnRoleLabel(str, Enum):
-    EVALUATIVE_QUESTION = "evaluative_question"      
-    INFORMATIONAL_QUESTION = "informational_question" 
-    CANDIDATE_NARRATIVE = "candidate_narrative"     
-    SELF_INTRODUCTION = "self_introduction"        
-    NONE = "none"   
+    EVALUATIVE_QUESTION = "evaluative_question"
+    INFORMATIONAL_QUESTION = "informational_question"
+    CANDIDATE_NARRATIVE = "candidate_narrative"
+    SELF_INTRODUCTION = "self_introduction"
+    NONE = "none"
 
 
 @dataclass
 class TurnClassification:
+    
     label: TurnRoleLabel
-    confidence: float 
+    confidence: float
+    applied_delta: float = 0.0
 
 
 @dataclass
@@ -47,11 +49,13 @@ class ParticipantTurnHistory:
 
 
 def is_segment_informative(turn: ConversationalTurn) -> bool:
-    
     return len(turn.text.split()) >= MIN_INFORMATIVE_WORD_COUNT
 
 
-def _default_heuristic_classifier(turn: ConversationalTurn,preceding_context: list[ConversationalTurn],external_metadata: ExternalMetadata,
+def _default_heuristic_classifier(
+    turn: ConversationalTurn,
+    preceding_context: list[ConversationalTurn],
+    external_metadata: ExternalMetadata,
 ) -> TurnClassification:
     
     text_lower = turn.text.lower()
@@ -86,7 +90,7 @@ def _default_heuristic_classifier(turn: ConversationalTurn,preceding_context: li
         return TurnClassification(TurnRoleLabel.INFORMATIONAL_QUESTION, confidence=0.75)
 
     narrative_pattern = re.search(
-        r"\bi (led|built|worked|used|implemented|managed|designed|created|"
+        r"\b(i|we) (led|built|worked|used|implemented|managed|designed|created|"
         r"developed|migrated|owned|shipped)\b",
         text_lower,
     )
@@ -100,9 +104,7 @@ TurnClassifier = Callable[[ConversationalTurn, list[ConversationalTurn], Externa
 
 
 def _scaled_delta(base: float, established: float, occurrence_count: int) -> float:
-    """Interpolates between `base` (1st occurrence) and `established`
-    (once occurrence_count reaches PATTERN_ESTABLISHMENT_TURN_COUNT) —
-    the pattern becomes the evidence, not any single sentence."""
+    
     progress = min(1.0, occurrence_count / PATTERN_ESTABLISHMENT_TURN_COUNT)
     return base + (established - base) * progress
 
@@ -117,7 +119,6 @@ def process_turn(
     classifier: TurnClassifier = _default_heuristic_classifier,
     event_sequence_id: Optional[int] = None,
 ) -> Optional[TurnClassification]:
-    
     if not is_segment_informative(turn):
         apply_scored_delta(
             entry, category="transcript_role", delta=0.0,
@@ -131,7 +132,7 @@ def process_turn(
             entry, category="transcript_role", delta=0.0,
             reason=(
                 f"ASR confidence {turn.min_confidence:.2f} below floor "
-                f"{MIN_ASR_CONFIDENCE_FOR_CLASSIFICATION} — transcription may be unreliable, "
+                f"{MIN_ASR_CONFIDENCE_FOR_CLASSIFICATION} - transcription may be unreliable, "
                 "discarded before semantic classification."
             ),
             event_sequence_id=event_sequence_id,
@@ -145,25 +146,13 @@ def process_turn(
             entry, category="transcript_role", delta=0.0,
             reason=(
                 f"Classifier confidence {classification.confidence:.2f} below floor "
-                f"{MIN_CLASSIFIER_CONFIDENCE} for label '{classification.label.value}' — "
-                "ambiguous turn discarded, not netted to zero."
-            ),
-            event_sequence_id=event_sequence_id,
-        )
-        return None
-    classification = classifier(turn, preceding_context, external_metadata)
- 
-    if classification.confidence < MIN_CLASSIFIER_CONFIDENCE:
-        apply_scored_delta(
-            entry, category="transcript_role", delta=0.0,
-            reason=(
-                f"Classifier confidence {classification.confidence:.2f} below floor "
                 f"{MIN_CLASSIFIER_CONFIDENCE} for label '{classification.label.value}' - "
                 "ambiguous turn discarded, not netted to zero."
             ),
             event_sequence_id=event_sequence_id,
         )
         return None
+
     history.total_classified_count += 1
 
     if classification.label == TurnRoleLabel.EVALUATIVE_QUESTION:
@@ -172,7 +161,7 @@ def process_turn(
             EVALUATIVE_QUESTION_BASE_DELTA, EVALUATIVE_QUESTION_ESTABLISHED_DELTA,
             history.evaluative_question_count,
         )
-        apply_scored_delta(
+        applied = apply_scored_delta(
             entry, category="transcript_role", delta=delta,
             reason=(
                 f"Turn classified as evaluative question (classifier_confidence="
@@ -182,6 +171,7 @@ def process_turn(
             event_sequence_id=event_sequence_id,
             category_cap=INTERVIEWER_ROLE_CATEGORY_CAP,
         )
+        classification.applied_delta = applied
 
     elif classification.label == TurnRoleLabel.CANDIDATE_NARRATIVE:
         history.candidate_narrative_count += 1
@@ -189,7 +179,7 @@ def process_turn(
             CANDIDATE_NARRATIVE_BASE_DELTA, CANDIDATE_NARRATIVE_ESTABLISHED_DELTA,
             history.candidate_narrative_count,
         )
-        apply_scored_delta(
+        applied = apply_scored_delta(
             entry, category="transcript_role", delta=delta,
             reason=(
                 f"Turn classified as candidate narrative (classifier_confidence="
@@ -199,6 +189,7 @@ def process_turn(
             event_sequence_id=event_sequence_id,
             category_cap=CANDIDATE_ROLE_CATEGORY_CAP,
         )
+        classification.applied_delta = applied
 
     elif classification.label == TurnRoleLabel.SELF_INTRODUCTION:
         apply_scored_delta(
@@ -213,26 +204,24 @@ def process_turn(
         )
 
     elif classification.label == TurnRoleLabel.INFORMATIONAL_QUESTION:
-        # Deliberately feeds NEITHER 1c nor 2c — candidates ask these too.
-        # Still logged, per the "always explain, never silent" principle.
+        
         apply_scored_delta(
             entry, category="transcript_role", delta=0.0,
             reason=(
                 f"Turn classified as informational question (classifier_confidence="
-                f"{classification.confidence:.2f}) — does not feed interviewer-role evidence, "
+                f"{classification.confidence:.2f}) - does not feed interviewer-role evidence, "
                 "since candidates ask informational questions too."
             ),
             event_sequence_id=event_sequence_id,
         )
 
-    else:  # TurnRoleLabel.NONE
+    else:
         apply_scored_delta(
             entry, category="transcript_role", delta=0.0,
-            reason=f"Turn classified as ambiguous/small-talk (label=none) — no evidence contributed.",
+            reason="Turn classified as ambiguous/small-talk (label=none) - no evidence contributed.",
             event_sequence_id=event_sequence_id,
         )
 
-    # --- Adopted signal: turn-taking frequency after a known interviewer ---
     if previous_turn_speaker_is_known_interviewer and classification.label in (
         TurnRoleLabel.CANDIDATE_NARRATIVE, TurnRoleLabel.SELF_INTRODUCTION,
     ):
@@ -240,7 +229,7 @@ def process_turn(
             entry, category="turn_taking_pattern", delta=TURN_TAKING_AFTER_INTERVIEWER_DELTA,
             reason=(
                 "This turn immediately follows a turn from a participant already identified "
-                "as a known interviewer, and reads as an answer rather than an interruption — "
+                "as a known interviewer, and reads as an answer rather than an interruption - "
                 "weak corroborating signal."
             ),
             event_sequence_id=event_sequence_id,

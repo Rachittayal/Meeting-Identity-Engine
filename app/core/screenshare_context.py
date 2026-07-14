@@ -16,7 +16,7 @@ from app.models.schemas import ScreenShareAction
 @dataclass
 class ScreenShareInterval:
     started_at: float
-    ended_at: Optional[float] = None  # None means still ongoing
+    ended_at: Optional[float] = None 
 
 
 class ScreenShareTracker:
@@ -65,10 +65,10 @@ def apply_screenshare_context(
     if classification is None or classification.label not in _AMPLIFIABLE_LABELS:
         return 0.0
     if step3_applied_delta == 0.0:
-        return 0.0  # nothing to amplify — Step 3's own cap already fully absorbed it
+        return 0.0 
 
     if not tracker.overlaps_window(turn.participant_id, turn.started_at, turn.ended_at):
-        return 0.0  # not sharing during this turn — true no-op, not logged
+        return 0.0  
 
     amplification = step3_applied_delta * SCREENSHARE_AMPLIFICATION_FACTOR
     category_cap = (

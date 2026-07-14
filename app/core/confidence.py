@@ -46,12 +46,17 @@ class ConfidenceResult:
 
 def compute_normalized_entropy(distribution: dict[str, float]) -> float:
     
-    n = len(distribution)
-    if n <= 1:
+    participant_count = len(distribution)
+    if participant_count <= 1:
         return 0.0
-    probabilities = [p for p in distribution.values() if p > 0]
-    raw_entropy = -sum(p * math.log2(p) for p in probabilities)
-    max_entropy = math.log2(n)
+
+    raw_entropy = 0.0
+
+    for probability in distribution.values():
+        if probability > 0:
+            raw_entropy -= probability * math.log2(probability)
+
+    max_entropy = math.log2(participant_count)
     return raw_entropy / max_entropy if max_entropy > 0 else 0.0
 
 
@@ -151,9 +156,19 @@ def evaluate_confidence(
         if still_confirmed:
             status = ConfidenceStatus.CONFIRMED
         else:
-            status = _classify_quadrant(top_log_odds, normalized_entropy)
+            status = _classify_quadrant(
+                top_log_odds,
+                normalized_entropy,
+                top_probability=top_probability,
+                ranked_size=len(ranked),
+            )
     else:
-        status = _classify_quadrant(top_log_odds, normalized_entropy)
+        status = _classify_quadrant(
+            top_log_odds,
+            normalized_entropy,
+            top_probability=top_probability,
+            ranked_size=len(ranked),
+        )
         if status == ConfidenceStatus.CONFIRMED:
             tracker.confirmed_participant_id = top_id
 
@@ -189,13 +204,24 @@ def evaluate_confidence(
     )
 
 
-def _classify_quadrant(leading_log_odds: float, normalized_entropy: float) -> ConfidenceStatus:
-   
+def _classify_quadrant(
+    leading_log_odds: float,
+    normalized_entropy: float,
+    *,
+    top_probability: float = 0.0,
+    ranked_size: int = 0,
+) -> ConfidenceStatus:
+    
     if leading_log_odds <= 0:
         return ConfidenceStatus.UNCERTAIN
 
     high_magnitude = leading_log_odds >= CONFIDENCE_MAGNITUDE_ENTER_THRESHOLD
     low_entropy = normalized_entropy <= CONFIDENCE_ENTROPY_ENTER_THRESHOLD
+
+    dominant_probability = top_probability >= 0.9
+    clear_lead = dominant_probability or ranked_size <= 1
+    if clear_lead and (high_magnitude or low_entropy or leading_log_odds >= 1.0):
+        return ConfidenceStatus.CONFIRMED
 
     if high_magnitude and low_entropy:
         return ConfidenceStatus.CONFIRMED
@@ -203,6 +229,7 @@ def _classify_quadrant(leading_log_odds: float, normalized_entropy: float) -> Co
         return ConfidenceStatus.PROVISIONAL
     if not high_magnitude and low_entropy:
         return ConfidenceStatus.EARLY_LEAN
+
     return ConfidenceStatus.UNCERTAIN
 
 
