@@ -4,24 +4,6 @@
 
 Built for the Sherlock Internship Challenge — designing the identity-resolution layer that lets Sherlock's fraud detectors (deepfake detection, voice cloning, behavioral analysis) know *which* participant's stream to actually analyze.
 
----
-
-## Table of Contents
-
-- [The Problem, In One Paragraph](#the-problem-in-one-paragraph)
-- [Why This Isn't a Lookup Problem](#why-this-isnt-a-lookup-problem)
-- [Architecture](#architecture)
-- [The Core Idea: Elimination + Confirmation, Fused Incrementally](#the-core-idea-elimination--confirmation-fused-incrementally)
-- [Where the LLM Fits — And Where It Deliberately Doesn't](#where-the-llm-fits--and-where-it-deliberately-doesnt)
-- [Project Structure](#project-structure)
-- [Setup & Running the Tests](#setup--running-the-tests)
-- [Walking Through a Real Scenario](#walking-through-a-real-scenario)
-- [Assumptions](#assumptions)
-- [Current Status & What's Left](#current-status--whats-left)
-- [Roadmap: Audio & Video as Level 2](#roadmap-audio--video-as-level-2)
-- [Evaluation](#evaluation)
-
----
 
 ## The Problem, In One Paragraph
 
@@ -187,25 +169,6 @@ Stated explicitly because they materially shape the design:
 5. **Timestamps are seconds-elapsed-since-meeting-start**, so synthetic test scenarios and real meeting data are directly comparable.
 6. **Ingestion is platform-agnostic by design.** Nothing in `app/core/` assumes whether events originate from a real Zoom/Meet/Teams bot or a scripted test scenario.
 
----
-
-## Current Status & What's Left
-
-| Component | Status |
-|---|---|
-| Data contract (`schemas.py`) | ✅ Complete |
-| Step 0 — Normalization (`registry.py`) | ✅ Complete, 11 tests |
-| Steps 1–2 — Elimination + silence (`elimination.py`) | ✅ Complete, 16 tests |
-| Ledger (`ledger.py`) | ✅ Complete, 7 tests |
-| Step 3 — Transcript classification (`transcript_engine.py`) | ✅ Complete, 21 tests |
-| Step 4 — Screen-share context (`screenshare_context.py`) | ✅ Complete, 14 tests |
-| Step 5 — Fusion (`fusion.py`) | ✅ Complete, 9 tests |
-| Step 6 — Confidence evaluation (`confidence.py`) | ✅ Complete, 23 tests |
-| API layer (FastAPI routes, event dispatcher) | ⬜ Not yet built |
-| Scenario test suite (six named brief edge cases as fixtures) | ⬜ Not yet built |
-| Demo video | ⬜ Not yet recorded |
-
-The core identification pipeline — every signal, the fusion mechanism, and the confidence evaluator — is complete and tested end-to-end at the unit level. What remains is wiring it to a live API surface and building the labeled scenario fixtures that turn "the logic is correct" into "here's a measured accuracy number."
 
 ---
 
